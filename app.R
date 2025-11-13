@@ -1,123 +1,146 @@
 # ---- app.R ----
-# App to explore multi-sheet Excel (cleaned) by dataset, visit, section, and variable.
-# Expects: input/dataset_long.rds  (columns: Dataset, Section, Variable, Visit, Value)
+# App to explore by dataset visit, section, and variable.
+
 
 library(shiny)
 library(tidyverse)
 library(DT)
 
-DATA_LONG_PATH <- "input/dataset_long.rds"   # created by your cleaning script
+DATA_LONG_PATH <- "input/dataset_long.rds"
 
 ui <- fluidPage(
-  titlePanel("Datasets × Visits × Variables — Explorer"),
+  titlePanel("Explore datasets by Visit / Section / Variable"),
+  
   sidebarLayout(
     sidebarPanel(
-      uiOutput("data_status"),
+      # Datasets / Visits / Sections as checkboxes
       uiOutput("dataset_ui"),
       uiOutput("visit_ui"),
       uiOutput("section_ui"),
-      uiOutput("variable_ui"),
-      textInput("search_value", "Search inside values (optional)", value = ""),
-      radioButtons("view_mode", "Table view",
-                   c("Long (one row per visit)" = "long",
-                     "Wide (visits as columns)" = "wide"),
-                   selected = "wide"),
-      numericInput("page_len", "Rows per page", value = 25, min = 5, max = 200, step = 5)
+      tags$hr(),
+      
+      # One selector for variables (main + sub)
+      uiOutput("var_ui"),
+      tags$hr(),
+      
+      radioButtons(
+        "view_mode",
+        "Table view",
+        c("Wide (visits as columns)" = "wide",
+          "Long (one row per visit)" = "long"),
+        inline = TRUE
+      ),
+      
+      numericInput("page_len", "Rows per page", 25, 5, 200, 5)
     ),
+    
     mainPanel(
-      tabsetPanel(
-        tabPanel("Browse", DTOutput("tbl")),
-        tabPanel("Variable view",
-                 uiOutput("var_note"),
-                 DTOutput("tbl_var_matrix"))
-      )
+      DTOutput("tbl")
     )
   )
 )
 
-server <- function(input, output, session){
+server <- function(input, output, session) {
   
   # ---- Load cleaned data ----
   dat_long <- reactive({
     validate(need(file.exists(DATA_LONG_PATH),
-                  paste0("File not found: ", DATA_LONG_PATH,
-                         ". Run your cleaning script to create it.")))
+                  paste0("Missing file: ", DATA_LONG_PATH)))
+    
     readRDS(DATA_LONG_PATH) %>%
-      mutate(across(c(Dataset, Section, Variable, Visit, Value), as.character))
+      mutate(across(everything(), as.character))
   })
   
-  output$data_status <- renderUI({
-    req(dat_long())
-    d <- dat_long()
-    HTML(paste0(
-      "<b>Loaded:</b> ", DATA_LONG_PATH, "<br/>",
-      "Datasets: ", d %>% distinct(Dataset) %>% nrow(), " | ",
-      "Visits: ",   d %>% distinct(Visit) %>% nrow(), " | ",
-      "Variables: ", d %>% distinct(Variable) %>% nrow()
-    ))
-  })
-  
-  # ---- Dynamic filters ----
+  # ---- Sidebar inputs ----
   observeEvent(dat_long(), {
     d <- dat_long()
+    
+    # Datasets
     output$dataset_ui <- renderUI({
       choices <- d %>% distinct(Dataset) %>% arrange(Dataset) %>% pull()
-      selectizeInput("datasets", "Datasets", choices = choices,
-                     selected = choices, multiple = TRUE,
-                     options = list(plugins = list("remove_button")))
+      checkboxGroupInput("datasets", "Datasets",
+                         choices = choices,
+                         selected = choices)
     })
+    
+    # Visits
     output$visit_ui <- renderUI({
       choices <- d %>% distinct(Visit) %>% arrange(Visit) %>% pull()
-      selectizeInput("visits", "Visits", choices = choices,
-                     selected = choices, multiple = TRUE,
-                     options = list(plugins = list("remove_button")))
+      checkboxGroupInput("visits", "Visits",
+                         choices = choices,
+                         selected = choices)
     })
+    
+    # Sections
     output$section_ui <- renderUI({
-      choices <- d %>% distinct(Section) %>% arrange(Section) %>% pull()
-      selectizeInput("sections", "Sections", choices = choices,
-                     selected = choices, multiple = TRUE,
-                     options = list(plugins = list("remove_button")))
+      choices <- d %>%
+        filter(!is.na(Section)) %>%
+        distinct(Section) %>%
+        arrange(Section) %>%
+        pull()
+      checkboxGroupInput("sections", "Sections",
+                         choices = choices,
+                         selected = choices)
     })
-    output$variable_ui <- renderUI({
-      choices <- d %>% distinct(Variable) %>% arrange(Variable) %>% pull()
-      selectizeInput("variables", "Variables (optional)",
-                     choices = choices, selected = NULL, multiple = TRUE,
-                     options = list(plugins = list("remove_button")),
-                     placeholder = "Pick one or more, or leave empty for all")
+    
+    # Variables (main + sub together)
+    output$var_ui <- renderUI({
+      var_choices <- c(d$Main_variable, d$Sub_variable) %>%
+        discard(is.na) %>%
+        unique() %>%
+        sort()
+      
+      selectizeInput(
+        "variables",
+        "Variables (optional)",
+        choices = var_choices,
+        selected = NULL,
+        multiple = TRUE,
+        options = list(plugins = list("remove_button"))
+      )
     })
-  }, ignoreInit = TRUE)
+  })
   
-  # ---- Apply filters ----
+  # ---- Filtering logic ----
   filtered <- reactive({
     d <- dat_long()
-    req(nrow(d) > 0)
-    if (!is.null(input$datasets) && length(input$datasets))
+    
+    if (!is.null(input$datasets))
       d <- d %>% filter(Dataset %in% input$datasets)
-    if (!is.null(input$visits) && length(input$visits))
+    if (!is.null(input$visits))
       d <- d %>% filter(Visit %in% input$visits)
-    if (!is.null(input$sections) && length(input$sections))
+    if (!is.null(input$sections))
       d <- d %>% filter(Section %in% input$sections)
-    if (!is.null(input$variables) && length(input$variables))
-      d <- d %>% filter(Variable %in% input$variables)
-    if (nzchar(input$search_value))
-      d <- d %>% filter(str_detect(Value, regex(input$search_value, ignore_case = TRUE)))
+    
+    # filter by variables (match either main or sub)
+    if (!is.null(input$variables) && length(input$variables) > 0) {
+      d <- d %>% filter(
+        Main_variable %in% input$variables |
+          Sub_variable %in% input$variables
+      )
+    }
+    
     d
   })
   
-  # ---- Browse table (long / wide) ----
+  # ---- Display table ----
   output$tbl <- renderDT({
-    d <- filtered()
+    d <- req(filtered())
     validate(need(nrow(d) > 0, "No rows match your filters."))
     
-    if (input$view_mode == "long") {
-      show <- d %>% arrange(Dataset, Section, Variable, Visit) %>%
-        select(Dataset, Section, Variable, Visit, Value)
+    show <- if (input$view_mode == "wide") {
+      d %>%
+        group_by(Dataset, Section, Main_variable, Sub_variable, Visit) %>%
+        summarise(Value = str_c(unique(Value), collapse = " | "),
+                  .groups = "drop") %>%
+        pivot_wider(names_from = Visit,
+                    values_from = Value,
+                    values_fill = "") %>%
+        arrange(Dataset, Section, Main_variable, Sub_variable)
     } else {
-      show <- d %>%
-        group_by(Dataset, Section, Variable, Visit) %>%
-        summarise(Value = str_c(unique(Value), collapse = " | "), .groups = "drop") %>%
-        pivot_wider(names_from = Visit, values_from = Value, values_fill = "") %>%
-        arrange(Dataset, Section, Variable)
+      d %>%
+        arrange(Dataset, Section, Main_variable, Sub_variable, Visit) %>%
+        select(Dataset, Section, Main_variable, Sub_variable, Visit, Value)
     }
     
     datatable(
@@ -128,34 +151,6 @@ server <- function(input, output, session){
         scrollX = TRUE,
         lengthMenu = c(10, 25, 50, 100, 200)
       )
-    )
-  })
-  
-  # ---- Variable view: matrix Dataset × Visit for one variable (or a few) ----
-  output$var_note <- renderUI({
-    req(dat_long())
-    HTML("Pick a variable in the left panel (Variables) to see it as a matrix by Dataset × Visit. 
-         If you select multiple, they’ll be stacked.")
-  })
-  
-  output$tbl_var_matrix <- renderDT({
-    d <- filtered()
-    req(nrow(d) > 0)
-    validate(need(!is.null(input$variables) && length(input$variables) > 0,
-                  "Select at least one Variable in the sidebar."))
-    
-    mat <- d %>%
-      filter(Variable %in% input$variables) %>%
-      group_by(Variable, Dataset, Visit) %>%
-      summarise(Value = str_c(unique(Value), collapse = " | "), .groups = "drop") %>%
-      arrange(Variable, Dataset, Visit) %>%
-      pivot_wider(names_from = Visit, values_from = Value, values_fill = "") %>%
-      arrange(Variable, Dataset)
-    
-    datatable(
-      mat,
-      rownames = FALSE,
-      options = list(pageLength = input$page_len, scrollX = TRUE)
     )
   })
 }
