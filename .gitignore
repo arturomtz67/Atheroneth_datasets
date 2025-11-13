@@ -4,3 +4,27 @@
 .httr-oauth
 .DS_Store
 .quarto
+
+# Never commit local env/secrets
+.Renviron
+.env
+
+# ---- DATA: keep code, ignore files ----
+# ignore everything in input/
+input/**
+
+# ...but keep the cleaner script and any readme placeholder
+!input/clean_datasets_wp3.R
+!input/.gitkeep
+!input/README.md
+
+# extra safety: ignore common data extensions anywhere
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.rds
+*.sav
+*.dta
+*.parquet
+*.feather
