@@ -15,8 +15,11 @@ ui <- fluidPage(
     sidebarPanel(
       # Datasets / Visits / Sections as checkboxes
       uiOutput("dataset_ui"),
+      checkboxInput("datasets_none", "Clear", FALSE),
       uiOutput("visit_ui"),
+      checkboxInput("visits_none", "Clear", FALSE),
       uiOutput("section_ui"),
+      checkboxInput("sections_none", "Clear", FALSE),
       tags$hr(),
       
       # One selector for variables (main + sub)
@@ -83,7 +86,8 @@ server <- function(input, output, session) {
                          selected = choices)
     })
     
-    # Variables (main + sub together)
+    
+    # Variables 
     output$var_ui <- renderUI({
       var_choices <- c(d$Main_variable, d$Sub_variable) %>%
         discard(is.na) %>%
@@ -92,7 +96,7 @@ server <- function(input, output, session) {
       
       selectizeInput(
         "variables",
-        "Variables (optional)",
+        "Variables (choose a specific variable)",
         choices = var_choices,
         selected = NULL,
         multiple = TRUE,
@@ -100,6 +104,31 @@ server <- function(input, output, session) {
       )
     })
   })
+  
+  
+  # ---- Clear checkboxes (deselect all)----
+  observeEvent(input$datasets_none, {
+    if (isTRUE(input$datasets_none)) {
+      updateCheckboxGroupInput(session, "datasets", selected = character(0))
+      updateCheckboxInput(session, "datasets_none", value = FALSE)
+    }
+  })
+  
+  observeEvent(input$visits_none, {
+    if (isTRUE(input$visits_none)) {
+      updateCheckboxGroupInput(session, "visits", selected = character(0))
+      updateCheckboxInput(session, "visits_none", value = FALSE)
+    }
+  })
+  
+  observeEvent(input$sections_none, {
+    if (isTRUE(input$sections_none)) {
+      updateCheckboxGroupInput(session, "sections", selected = character(0))
+      updateCheckboxInput(session, "sections_none", value = FALSE)
+    }
+  })
+  
+  
   
   # ---- Filtering logic ----
   filtered <- reactive({
