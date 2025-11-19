@@ -9,7 +9,7 @@ library(DT)
 DATA_LONG_PATH <- "input/dataset_long.rds"
 
 ui <- fluidPage(
-  titlePanel("Explore datasets by Visit / Section / Variable"),
+  titlePanel("Explore AtheroNeth datasets"),
   
   sidebarLayout(
     sidebarPanel(
