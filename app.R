@@ -8,6 +8,21 @@ library(DT)
 
 DATA_LONG_PATH <- "input/dataset_long.rds"
 
+
+# Order for sections in side panel
+SECTION_ORDER <- c(
+  "General",
+  "Cardiovascular risk factors, athropometrics, glucose and lipid",
+  "Lifestyle",
+  "SES",
+  "Inflammation biomarkers",
+  "(Gen)Omics & Epigenomics data",
+  "Imaging modalities / Surrogate cardiovascular endpoints",
+  "Diseases (questionnaire/diagnosis/medication)",
+  "Other variables"
+)
+
+
 ui <- fluidPage(
   titlePanel("Explore AtheroNeth datasets"),
   
@@ -76,11 +91,15 @@ server <- function(input, output, session) {
     
     # Sections
     output$section_ui <- renderUI({
-      choices <- d %>%
+      present <- d %>%
         filter(!is.na(Section)) %>%
         distinct(Section) %>%
         arrange(Section) %>%
         pull()
+      
+      # keep only sections that are present
+      choices <- SECTION_ORDER[SECTION_ORDER %in% present]
+      
       checkboxGroupInput("sections", "Sections",
                          choices = choices,
                          selected = choices)
