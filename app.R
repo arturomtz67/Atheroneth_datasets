@@ -23,6 +23,18 @@ SECTION_ORDER <- c(
 )
 
 
+# Logos of each data set
+DATASET_LOGOS <- c(
+  "Helius" = "helius.jpg",
+  "Lifelines" = "lifelines.jpg",
+  "NEO" = "neo.jpg",
+  "PROSPER" = "prosper.jpg",
+  "Rotterdam Study" = "rotterdam.jpg",
+  "UK Biobank" = "ukbiobank.jpg"
+)
+
+
+
 ui <- fluidPage(
   titlePanel("Explore AtheroNeth datasets"),
   
@@ -31,10 +43,13 @@ ui <- fluidPage(
       # Datasets / Visits / Sections as checkboxes
       uiOutput("dataset_ui"),
       checkboxInput("datasets_none", "Clear", FALSE),
+      
       uiOutput("visit_ui"),
       checkboxInput("visits_none", "Clear", FALSE),
+      
       uiOutput("section_ui"),
       checkboxInput("sections_none", "Clear", FALSE),
+      
       tags$hr(),
       
       # One selector for variables (main + sub)
@@ -69,17 +84,78 @@ server <- function(input, output, session) {
       mutate(across(everything(), as.character))
   })
   
+  
+  
+  # ---- Function to create checkbox with logo ----
+  create_checkbox_with_logo <- function(dataset_name, logo_file) {
+    logo_path <- file.path("www", logo_file)
+    
+    # Check if logo file exists
+    if (file.exists(logo_path)) {
+      tags$div(
+        style = "display: flex; align-items: center; margin-bottom: 8px;",
+        tags$input(
+          type = "checkbox",
+          name = "datasets",
+          value = dataset_name,
+          id = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
+          checked = "checked",
+          style = "margin-right: 8px;"
+        ),
+        tags$img(
+          src = logo_file,
+          height = "30px",
+          style = "margin-right: 8px; vertical-align: middle;"
+        ),
+        tags$label(
+          `for` = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
+          dataset_name,
+          style = "margin: 0; cursor: pointer;"
+        )
+      )
+    } else {
+      # Fallback if logo doesn't exist
+      tags$div(
+        style = "margin-bottom: 8px;",
+        tags$input(
+          type = "checkbox",
+          name = "datasets",
+          value = dataset_name,
+          id = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
+          checked = "checked"
+        ),
+        tags$label(
+          `for` = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
+          dataset_name,
+          style = "margin-left: 5px;"
+        )
+      )
+    }
+  }
+  
+  
+  
   # ---- Sidebar inputs ----
   observeEvent(dat_long(), {
     d <- dat_long()
     
     # Datasets
     output$dataset_ui <- renderUI({
-      choices <- d %>% distinct(Dataset) %>% arrange(Dataset) %>% pull()
-      checkboxGroupInput("datasets", "Datasets",
-                         choices = choices,
-                         selected = choices)
+      datasets <- d %>% distinct(Dataset) %>% arrange(Dataset) %>% pull()
+      
+      tags$div(
+        tags$strong("Datasets"),
+        tags$div(
+          style = "margin-top: 10px;",
+          map(datasets, ~{
+            logo <- DATASET_LOGOS[.x]
+            if (is.na(logo)) logo <- "default_logo.png"
+            create_checkbox_with_logo(.x, logo)
+          })
+        )
+      )
     })
+  
     
     # Visits
     output$visit_ui <- renderUI({
@@ -191,8 +267,28 @@ server <- function(input, output, session) {
         select(Dataset, Section, Main_variable, Sub_variable, Visit, Value)
     }
     
+    
+    # Replace Dataset text with logo HTML
+    show <- show %>%
+      mutate(
+        Dataset = map_chr(Dataset, ~{
+          logo <- DATASET_LOGOS[.x]
+          if (is.na(logo)) {
+            # If logo not found, return text
+            return(.x)
+          } else {
+            # Return HTML for logo image
+            sprintf('<img src="%s" height="30px" title="%s" alt="%s"/>', 
+                    logo, .x, .x)
+          }
+        })
+      )
+    
+    
+    
     datatable(
       show,
+      escape = FALSE, # Allow HTML in cells for the logos
       filter = "top",
       options = list(
         pageLength = input$page_len,
@@ -202,5 +298,6 @@ server <- function(input, output, session) {
     )
   })
 }
+
 
 shinyApp(ui, server)
