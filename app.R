@@ -75,6 +75,7 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
+
   # ---- Load cleaned data ----
   dat_long <- reactive({
     validate(need(file.exists(DATA_LONG_PATH),
@@ -84,56 +85,7 @@ server <- function(input, output, session) {
       mutate(across(everything(), as.character))
   })
   
-  
-  
-  # ---- Function to create checkbox with logo ----
-  create_checkbox_with_logo <- function(dataset_name, logo_file) {
-    logo_path <- file.path("www", logo_file)
-    
-    # Check if logo file exists
-    if (file.exists(logo_path)) {
-      tags$div(
-        style = "display: flex; align-items: center; margin-bottom: 8px;",
-        tags$input(
-          type = "checkbox",
-          name = "datasets",
-          value = dataset_name,
-          id = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
-          checked = "checked",
-          style = "margin-right: 8px;"
-        ),
-        tags$img(
-          src = logo_file,
-          height = "30px",
-          style = "margin-right: 8px; vertical-align: middle;"
-        ),
-        tags$label(
-          `for` = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
-          dataset_name,
-          style = "margin: 0; cursor: pointer;"
-        )
-      )
-    } else {
-      # Fallback if logo doesn't exist
-      tags$div(
-        style = "margin-bottom: 8px;",
-        tags$input(
-          type = "checkbox",
-          name = "datasets",
-          value = dataset_name,
-          id = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
-          checked = "checked"
-        ),
-        tags$label(
-          `for` = paste0("datasets_", gsub("[^A-Za-z0-9]", "_", dataset_name)),
-          dataset_name,
-          style = "margin-left: 5px;"
-        )
-      )
-    }
-  }
-  
-  
+
   
   # ---- Sidebar inputs ----
   observeEvent(dat_long(), {
@@ -143,26 +95,40 @@ server <- function(input, output, session) {
     output$dataset_ui <- renderUI({
       datasets <- d %>% distinct(Dataset) %>% arrange(Dataset) %>% pull()
       
-      tags$div(
-        tags$strong("Datasets"),
-        tags$div(
-          style = "margin-top: 10px;",
-          map(datasets, ~{
-            logo <- DATASET_LOGOS[.x]
-            if (is.na(logo)) logo <- "default_logo.png"
-            create_checkbox_with_logo(.x, logo)
-          })
-        )
+      # match logos in the same order as datasets
+      logos <- DATASET_LOGOS[datasets]
+      
+      # build list of <img> tags (or text fallback)
+      choice_names <- lapply(seq_along(datasets), function(i) {
+        nm   <- datasets[i]
+        logo <- logos[i]
+        
+        if (!is.na(logo) && nzchar(logo)) {
+          img(src = logo,
+              height = "30px",
+              title  = nm,
+              alt    = nm)
+        } else {
+          nm
+        }
+      })
+
+
+      checkboxGroupInput(
+        "datasets",
+        "Datasets",
+        choiceNames  = choice_names,
+        choiceValues = datasets,
+        selected     = datasets
       )
     })
-  
     
     # Visits
     output$visit_ui <- renderUI({
       choices <- d %>% distinct(Visit) %>% arrange(Visit) %>% pull()
       checkboxGroupInput("visits", "Visits",
-                         choices = choices,
-                         selected = choices)
+                          choices = choices,
+                          selected = choices)
     })
     
     # Sections
@@ -177,8 +143,8 @@ server <- function(input, output, session) {
       choices <- SECTION_ORDER[SECTION_ORDER %in% present]
       
       checkboxGroupInput("sections", "Sections",
-                         choices = choices,
-                         selected = choices)
+                          choices = choices,
+                          selected = choices)
     })
     
     
@@ -229,11 +195,11 @@ server <- function(input, output, session) {
   filtered <- reactive({
     d <- dat_long()
     
-    if (!is.null(input$datasets))
+    if (!is.null(input$datasets) && length(input$datasets) > 0)
       d <- d %>% filter(Dataset %in% input$datasets)
-    if (!is.null(input$visits))
+    if (!is.null(input$visits) && length(input$visits) > 0)
       d <- d %>% filter(Visit %in% input$visits)
-    if (!is.null(input$sections))
+    if (!is.null(input$sections) && length(input$sections) > 0)
       d <- d %>% filter(Section %in% input$sections)
     
     # filter by variables (match either main or sub)
